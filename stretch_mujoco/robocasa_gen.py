@@ -1,16 +1,17 @@
 from collections import OrderedDict
 from typing import Tuple
-
+import json
 import click
 import mujoco
 import mujoco.viewer
 import numpy as np
 import robosuite
-from robocasa.models.scenes.scene_registry import LayoutType, StyleType
+from robocasa.models.arenas.layout_builder import STYLES
 from robosuite import load_controller_config
 from termcolor import colored
-
-from stretch_mujoco import StretchMujocoSimulator
+import os
+os.environ['MUJOCO_GL']="glx"
+from stretch_mujoco import UntidyBotSimulator
 from stretch_mujoco.utils import (
     get_absolute_path_stretch_xml,
     insert_line_after_mujoco_tag,
@@ -20,18 +21,7 @@ from stretch_mujoco.utils import (
     xml_remove_tag_by_name,
 )
 
-
-def get_styles() -> OrderedDict:
-    raw_styles = dict(
-        map(lambda item: (item.value, item.name.lower().capitalize()), StyleType)
-    )
-    styles = OrderedDict()
-    for k in sorted(raw_styles.keys()):
-        if k < 0:
-            continue
-        styles[k] = raw_styles[k]
-    return styles
-
+import Utils
 
 """
 Modified version of robocasa's kitchen scene generation script
@@ -122,7 +112,9 @@ def model_generation_wizard(
         ]
     )
 
-    styles = get_styles()
+    styles = OrderedDict()
+    for k in sorted(STYLES.keys()):
+        styles[k] = STYLES[k].capitalize()
     if layout is None:
         layout = choose_option(
             layouts, "kitchen layout", default=-1, default_message="random layouts"
@@ -272,9 +264,35 @@ def main(task: str, layout: int, style: int, write_to_file: str):
         layout=layout,
         style=style,
         write_to_file=write_to_file,
+        robot_spawn_pose={"pos": "2.26 -1.43 0.0", "quat": "0 0 0 1"},
     )
-    robot_sim = StretchMujocoSimulator(model=model)
+    
+
+    output = {}
+    print("Objects in scene:")
+    # Loop through the input data and format it
+    for i, (key, obj) in enumerate(objects_info.items()):
+        obj_tag = obj['cat']
+        obj_pos = obj['pos']
+        print(obj_tag)
+        output[f'object_{i+1}'] = {
+            'id': i,  # Unique ID based on index
+            'key': key,  # Using the original key as 'name'
+            'name': obj_tag,  # Using 'cat' as the tag
+            'position': obj_pos  # Using 'pos' as position
+        }
+
+    instruction = input("Please enter your instruction or string: ")
+
+    # Convert the dictionary to a JSON string for output
+    formatted_json = json.dumps(output, indent=2)
+
+    args = Utils.parse_arguments()
+    args.instruction = instruction
+    robot_sim = UntidyBotSimulator(args,model=model,objects_json=formatted_json)
     robot_sim.start()
+
+
 
 
 if __name__ == "__main__":
